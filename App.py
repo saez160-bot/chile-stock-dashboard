@@ -171,4 +171,7 @@ else:
             "Price": round(last['close'], 2),
             "RelVol": round(last['rel_vol'], 2),
             "Change%": round(last['change_pct'], 2),
-            "Signal": classify_signal(last
+            "Signal": classify_signal(last)
+        })
+
+    st.dataframe(pd.DataFrame(fallback))
