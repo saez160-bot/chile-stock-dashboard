@@ -5,17 +5,17 @@ import numpy as np
 import plotly.graph_objects as go
 
 # =========================
-# PAGE
+# PAGE SETUP
 # =========================
 
-st.set_page_config(page_title="Chile Terminal v15", layout="wide")
+st.set_page_config(page_title="Chile Terminal v16", layout="wide")
 
 st.markdown(
-    "<h3 style='margin-bottom:5px;'>🇨🇱 Chile Trading Terminal v15 (AI Breakout)</h3>",
+    "<h3 style='margin-bottom:5px;'>🇨🇱 Chile Trading Terminal v16 (Pro + Volume + Controls)</h3>",
     unsafe_allow_html=True
 )
 
-st.caption("CLP Engine • EODHD • AI Breakout Score • Volume + Trend System")
+st.caption("CLP Engine • EODHD • AI Breakout • Volume + Chart Controls")
 
 # =========================
 # API
@@ -25,7 +25,7 @@ API_KEY = st.secrets.get("EODHD_API_KEY", "69d99e2d2c54f0.76165177")
 BASE_URL = "https://eodhd.com/api/eod"
 
 # =========================
-# UNIVERSE (UPDATED)
+# UNIVERSE
 # =========================
 
 TICKERS = {
@@ -39,7 +39,7 @@ TICKERS = {
 }
 
 # =========================
-# DATA ENGINE
+# DATA ENGINE (SAFE)
 # =========================
 
 def get_data(ticker):
@@ -86,7 +86,6 @@ def indicators(df):
 
     df["change_pct"] = df["close"].pct_change() * 100
 
-    # MOVING AVERAGES
     df["ma20"] = df["close"].rolling(20).mean()
     df["ma50"] = df["close"].rolling(50).mean()
 
@@ -114,8 +113,6 @@ def signal(last):
 # =========================
 
 def breakout_score(df):
-    df = df.copy()
-
     trend = 0
     if df["ma20"].iloc[-1] > df["ma50"].iloc[-1]:
         trend = 25
@@ -123,7 +120,6 @@ def breakout_score(df):
         trend = -10
 
     vol_score = min(df["rel_vol"].iloc[-1] * 20, 35)
-
     momentum = min(abs(df["change_pct"].iloc[-1]) * 10, 20)
 
     recent_range = (df["high"] - df["low"]).iloc[-5:].mean()
@@ -146,47 +142,104 @@ def breakout_status(score):
     return "🔵 NO SETUP"
 
 # =========================
-# CHART
+# CONTROLS
+# =========================
+
+st.subheader("📊 Chart Controls")
+
+chart_type = st.selectbox("Chart Type", ["Candlestick", "Line", "OHLC"])
+show_ma = st.checkbox("Show MA20 / MA50", value=True)
+show_volume = st.checkbox("Show Volume", value=True)
+
+# =========================
+# CHART ENGINE (FULL)
 # =========================
 
 def plot_chart(df, name):
+
     fig = go.Figure()
 
-    fig.add_trace(go.Candlestick(
-        x=df["date"],
-        open=df["open"],
-        high=df["high"],
-        low=df["low"],
-        close=df["close"]
-    ))
+    # PRICE
+    if chart_type == "Candlestick":
+        fig.add_trace(go.Candlestick(
+            x=df["date"],
+            open=df["open"],
+            high=df["high"],
+            low=df["low"],
+            close=df["close"]
+        ))
 
-    fig.add_trace(go.Scatter(
-        x=df["date"],
-        y=df["ma20"],
-        mode="lines",
-        name="MA20"
-    ))
+    elif chart_type == "Line":
+        fig.add_trace(go.Scatter(
+            x=df["date"],
+            y=df["close"],
+            mode="lines",
+            name="Price"
+        ))
 
-    fig.add_trace(go.Scatter(
-        x=df["date"],
-        y=df["ma50"],
-        mode="lines",
-        name="MA50"
-    ))
+    elif chart_type == "OHLC":
+        fig.add_trace(go.Ohlc(
+            x=df["date"],
+            open=df["open"],
+            high=df["high"],
+            low=df["low"],
+            close=df["close"]
+        ))
+
+    # MOVING AVERAGES
+    if show_ma:
+        fig.add_trace(go.Scatter(
+            x=df["date"],
+            y=df["ma20"],
+            mode="lines",
+            name="MA20"
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=df["date"],
+            y=df["ma50"],
+            mode="lines",
+            name="MA50"
+        ))
+
+    # VOLUME
+    if show_volume:
+        colors = np.where(df["close"] >= df["open"], "green", "red")
+
+        fig.add_trace(go.Bar(
+            x=df["date"],
+            y=df["volume"],
+            marker_color=colors,
+            opacity=0.3,
+            name="Volume",
+            yaxis="y2"
+        ))
 
     fig.update_layout(
-        height=600,
-        xaxis_rangeslider_visible=False,
-        margin=dict(l=10, r=10, t=30, b=10),
-        hovermode="x unified",
+        title=name,
+        height=650,
         template="plotly_dark",
-        title=name
+        hovermode="x unified",
+        margin=dict(l=10, r=10, t=30, b=10),
+
+        xaxis=dict(rangeslider=dict(visible=False)),
+
+        yaxis=dict(title="Price"),
+
+        yaxis2=dict(
+            title="Volume",
+            overlaying="y",
+            side="right",
+            showgrid=False
+        ),
+
+        legend=dict(orientation="h")
     )
 
     return fig
 
 # =========================
-# UI SELECTOR
+# STOCK SELECTOR
 # =========================
 
 selected = st.selectbox("Select Stock", list(TICKERS.keys()))
