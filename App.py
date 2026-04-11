@@ -181,3 +181,7 @@ st.subheader("📊 Volume Anomaly Screener")
 df_res = pd.DataFrame(results)
 
 if not df_res.empty:
+    df_res = df_res.sort_values("ZScore", ascending=False)
+    st.dataframe(df_res, use_container_width=True)
+else:
+    st.error("No data available (broker or simulation failed)")
