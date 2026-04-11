@@ -5,17 +5,17 @@ import numpy as np
 import plotly.graph_objects as go
 
 # =========================
-# PAGE SETUP
+# PAGE
 # =========================
 
 st.set_page_config(page_title="Chile Terminal v16", layout="wide")
 
 st.markdown(
-    "<h3 style='margin-bottom:5px;'>🇨🇱 Chile Trading Terminal v16 (Pro + Volume + Controls)</h3>",
+    "<h3 style='margin-bottom:5px;'>🇨🇱 Chile Trading Terminal v16</h3>",
     unsafe_allow_html=True
 )
 
-st.caption("CLP Engine • EODHD • AI Breakout • Volume + Chart Controls")
+st.caption("CLP Engine • EODHD • AI Breakout • Volume + Chart Tools")
 
 # =========================
 # API
@@ -39,7 +39,7 @@ TICKERS = {
 }
 
 # =========================
-# DATA ENGINE (SAFE)
+# DATA ENGINE
 # =========================
 
 def get_data(ticker):
@@ -92,7 +92,7 @@ def indicators(df):
     return df.fillna(0)
 
 # =========================
-# SIGNAL ENGINE
+# SIGNAL
 # =========================
 
 def signal(last):
@@ -109,7 +109,7 @@ def signal(last):
     return "➖ NEUTRAL"
 
 # =========================
-# AI BREAKOUT ENGINE
+# AI BREAKOUT
 # =========================
 
 def breakout_score(df):
@@ -142,17 +142,75 @@ def breakout_status(score):
     return "🔵 NO SETUP"
 
 # =========================
-# CONTROLS
+# STOCK SELECTOR
 # =========================
 
-st.subheader("📊 Chart Controls")
+selected = st.selectbox("Select Stock", list(TICKERS.keys()))
+ticker = TICKERS[selected]
 
-chart_type = st.selectbox("Chart Type", ["Candlestick", "Line", "OHLC"])
-show_ma = st.checkbox("Show MA20 / MA50", value=True)
-show_volume = st.checkbox("Show Volume", value=True)
+df = get_data(ticker)
+
+if df is None or df.empty:
+    st.error("No data available")
+    st.stop()
+
+df = indicators(df)
+last = df.iloc[-1]
 
 # =========================
-# CHART ENGINE (FULL)
+# METRICS (COMPACT)
+# =========================
+
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    st.metric("Price", round(last["close"], 2))
+
+with col2:
+    st.metric("Vol (K)", f"{last['volume']/1000:.1f}")
+
+with col3:
+    st.metric("Rel Vol", round(last["rel_vol"], 2))
+
+with col4:
+    st.metric("Z", round(last["zscore"], 2))
+
+# =========================
+# SIGNAL + AI
+# =========================
+
+score = breakout_score(df)
+status = breakout_status(score)
+
+st.markdown(
+    f"<div style='font-size:12px; opacity:0.85; margin-bottom:6px;'>"
+    f"🧠 Signal: <b>{signal(last)}</b> | "
+    f"🚀 Breakout Score: <b>{score:.0f}/100</b> ({status})"
+    f"</div>",
+    unsafe_allow_html=True
+)
+
+# =========================
+# CHART CONTROLS (NOW DIRECTLY ABOVE CHART)
+# =========================
+
+colA, colB, colC = st.columns([1,1,2])
+
+with colA:
+    chart_type = st.selectbox(
+        "Type",
+        ["Candlestick", "Line", "OHLC"],
+        label_visibility="collapsed"
+    )
+
+with colB:
+    show_ma = st.checkbox("MA", value=True)
+
+with colC:
+    show_volume = st.checkbox("Vol", value=True)
+
+# =========================
+# CHART ENGINE
 # =========================
 
 def plot_chart(df, name):
@@ -239,55 +297,6 @@ def plot_chart(df, name):
     return fig
 
 # =========================
-# STOCK SELECTOR
-# =========================
-
-selected = st.selectbox("Select Stock", list(TICKERS.keys()))
-ticker = TICKERS[selected]
-
-df = get_data(ticker)
-
-if df is None or df.empty:
-    st.error("No data available")
-    st.stop()
-
-df = indicators(df)
-last = df.iloc[-1]
-
-# =========================
-# METRICS (COMPACT)
-# =========================
-
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    st.metric("Price", round(last["close"], 2))
-
-with col2:
-    st.metric("Vol (K)", f"{last['volume']/1000:.1f}")
-
-with col3:
-    st.metric("Rel Vol", round(last["rel_vol"], 2))
-
-with col4:
-    st.metric("Z", round(last["zscore"], 2))
-
-# =========================
-# SIGNAL + AI BREAKOUT
-# =========================
-
-score = breakout_score(df)
-status = breakout_status(score)
-
-st.markdown(
-    f"<div style='font-size:12px; opacity:0.85;'>"
-    f"🧠 Signal: <b>{signal(last)}</b> | "
-    f"🚀 Breakout Score: <b>{score:.0f}/100</b> ({status})"
-    f"</div>",
-    unsafe_allow_html=True
-)
-
-# =========================
 # CHART
 # =========================
 
@@ -327,7 +336,9 @@ for name, ticker in TICKERS.items():
     })
 
 if results:
-    df_res = pd.DataFrame(results).sort_values("BreakoutScore", ascending=False)
-    st.dataframe(df_res, use_container_width=True)
+    st.dataframe(
+        pd.DataFrame(results).sort_values("BreakoutScore", ascending=False),
+        use_container_width=True
+    )
 else:
     st.warning("No screener data available")
