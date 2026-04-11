@@ -30,10 +30,12 @@ BASE_URL = "https://eodhd.com/api/eod"
 
 TICKERS = {
     "ENEL CHILE": "ENELCHILE.SN",
-    "SQM-B": "SQM-B.SN",
     "COPEC": "COPEC.SN",
     "BANCO DE CHILE": "CHILE.SN",
-    "SANTANDER CHILE": "BSANTANDER.SN"
+    "SANTANDER CHILE": "BSANTANDER.SN",
+    "SOCOVESA": "SOCOVESA.SN",
+    "COLBUN": "COLBUN.SN",
+    "LATAM AIRLINES": "LTM.SN"
 }
 
 # =========================
