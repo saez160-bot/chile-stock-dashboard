@@ -1,16 +1,21 @@
 import streamlit as st
 import pandas as pd
+import requests
 import numpy as np
-import yfinance as yf
-from streamlit_autorefresh import st_autorefresh
 
-st.set_page_config(page_title="Chile CLP Engine v8", layout="wide")
-st.title("🇨🇱 Chile Market Engine v8 (REAL CLP DATA)")
-
-st_autorefresh(interval=60000)
+st.set_page_config(page_title="Chile CLP Engine v10", layout="wide")
+st.title("🇨🇱 Chile CLP Engine v10 (EODHD Live)")
 
 # =========================
-# 🇨🇱 REAL CHILE TICKERS
+# 🔑 API KEY (DO NOT HARD-CODE PUBLICLY)
+# =========================
+
+API_KEY = st.secrets.get("EODHD_API_KEY", "69d99e2d2c54f0.76165177")
+
+BASE_URL = "https://eodhd.com/api/eod"
+
+# =========================
+# 🇨🇱 CHILE TICKERS
 # =========================
 
 TICKERS = {
@@ -22,47 +27,53 @@ TICKERS = {
 }
 
 # =========================
-# DATA ENGINE (CLP REAL)
+# 📡 DATA FETCH
 # =========================
 
 def get_data(ticker):
     try:
-        df = yf.download(ticker, period="6mo", interval="1d", progress=False)
+        url = f"{BASE_URL}/{ticker}?api_token={API_KEY}&fmt=json&period=d"
+        r = requests.get(url, timeout=10)
 
-        if df is None or df.empty:
+        if r.status_code != 200:
             return None
 
-        df = df.reset_index()
-        df.columns = [c.lower().replace(" ", "_") for c in df.columns]
+        data = r.json()
 
-        required = ["open", "high", "low", "close", "volume"]
-
-        if not all(col in df.columns for col in required):
+        if not isinstance(data, list) or len(data) == 0:
             return None
 
-        return df.dropna()
+        df = pd.DataFrame(data)
+
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.sort_values("date")
+
+        return df
 
     except:
         return None
 
 # =========================
-# INDICATORS
+# 📊 INDICATORS
 # =========================
 
 def indicators(df):
-    df["vol_avg"] = df["volume"].rolling(20, min_periods=1).mean()
-    df["vol_std"] = df["volume"].rolling(20, min_periods=1).std()
+    df = df.copy()
+
+    df["volume"] = df["volume"].fillna(0)
+
+    df["vol_avg"] = df["volume"].rolling(20).mean()
+    df["vol_std"] = df["volume"].rolling(20).std()
 
     df["rel_vol"] = df["volume"] / df["vol_avg"]
     df["zscore"] = (df["volume"] - df["vol_avg"]) / (df["vol_std"] + 1e-9)
 
     df["change_pct"] = df["close"].pct_change() * 100
-    df["high_5d"] = df["high"].rolling(5, min_periods=1).max()
 
     return df.fillna(0)
 
 # =========================
-# SIGNAL ENGINE
+# 🧠 SIGNAL ENGINE
 # =========================
 
 def signal(last):
@@ -75,55 +86,46 @@ def signal(last):
     elif last["change_pct"] > 1:
         return "📈 MOMENTUM"
     elif last["change_pct"] < -1:
-        return "📉 SELLING PRESSURE"
+        return "📉 DISTRIBUTION"
     return "➖ NEUTRAL"
 
 # =========================
-# DASHBOARD
+# 📊 DASHBOARD
 # =========================
-
-cols = st.columns(2)
 
 results = []
 
-for i, (name, ticker) in enumerate(TICKERS.items()):
+for name, ticker in TICKERS.items():
 
     df = get_data(ticker)
 
-    if df is None:
-        st.warning(f"⚠️ No real CLP data: {name}")
+    if df is None or df.empty:
+        st.warning(f"No data: {name}")
         continue
 
     df = indicators(df)
     last = df.iloc[-1]
 
-    with cols[i % 2]:
-        st.markdown(f"## {name} (CLP)")
+    st.markdown(f"## {name} (CLP)")
 
-        st.metric("Precio CLP", round(last["close"], 2))
-        st.metric("Volumen", int(last["volume"]))
-        st.metric("Rel Vol", round(last["rel_vol"], 2))
-        st.metric("Z-Score", round(last["zscore"], 2))
+    st.metric("Price", round(last["close"], 2))
+    st.metric("Volume", int(last["volume"]))
+    st.metric("Rel Vol", round(last["rel_vol"], 2))
+    st.metric("Z-Score", round(last["zscore"], 2))
 
-        st.write("Signal:", signal(last))
+    st.write("Signal:", signal(last))
 
     results.append({
         "Stock": name,
-        "Precio CLP": round(last["close"], 2),
+        "Price": round(last["close"], 2),
         "RelVol": round(last["rel_vol"], 2),
         "ZScore": round(last["zscore"], 2),
         "Signal": signal(last)
     })
 
-# =========================
-# SCREENER
-# =========================
-
 st.subheader("📊 Chile CLP Screener")
 
-df_res = pd.DataFrame(results)
-
-if not df_res.empty:
-    st.dataframe(df_res.sort_values("ZScore", ascending=False))
+if results:
+    st.dataframe(pd.DataFrame(results))
 else:
-    st.error("No CLP market data available (Yahoo limitation or ticker mismatch)")
+    st.error("No data received (check API key or ticker access)")
