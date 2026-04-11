@@ -5,21 +5,21 @@ import plotly.graph_objects as go
 import requests
 from streamlit_autorefresh import st_autorefresh
 
-# 🔄 Auto refresh every 60 sec
+# 🔄 Auto refresh (60 sec)
 st_autorefresh(interval=60000)
 
 st.title("🇨🇱 Chile Stock Screener Dashboard")
 
-# 🔔 TELEGRAM CONFIG (optional)
-TELEGRAM_TOKEN = ""  # put your token
-CHAT_ID = ""         # put your chat id
+# 🔔 TELEGRAM (optional)
+TELEGRAM_TOKEN = ""
+CHAT_ID = ""
 
 def send_alert(msg):
     if TELEGRAM_TOKEN and CHAT_ID:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
 
-# 📊 Chilean tickers
+# 📊 Chile stocks
 TICKERS = {
     "ENEL": "ENELCHILE.SN",
     "SQM-B": "SQM-B.SN",
@@ -28,7 +28,7 @@ TICKERS = {
     "CHILE": "CHILE.SN"
 }
 
-# 📥 Get data (no API key)
+# 📥 DATA (no API key)
 def get_data(ticker):
     try:
         df = yf.download(ticker, period="3mo", interval="1d")
@@ -74,7 +74,7 @@ def plot_chart(df, name):
 
     return fig
 
-# 🧠 Signal classifier
+# 🧠 Signal engine
 def classify_signal(last):
     if last['rel_vol'] > 2 and last['close'] >= last['high_5d']:
         return "🚀 BREAKOUT"
@@ -84,7 +84,7 @@ def classify_signal(last):
         return "🔻 PULLBACK"
     return "➖ NEUTRAL"
 
-# 📊 MULTI STOCK DASHBOARD
+# 📊 DASHBOARD VIEW
 st.subheader("📊 Multi-Stock Overview")
 
 cols = st.columns(2)
@@ -101,7 +101,6 @@ for name, ticker in TICKERS.items():
 
     with cols[i % 2]:
         st.markdown(f"### {name}")
-        st.plotly_chart(plot_chart(df.tail(60), name), use_container_width=True)
 
         st.write(f"💰 Price: {round(last['close'],2)}")
         st.write(f"🔊 Rel Vol: {round(last['rel_vol'],2)}")
@@ -110,13 +109,13 @@ for name, ticker in TICKERS.items():
         signal = classify_signal(last)
         st.write(f"Signal: {signal}")
 
-        # 🔔 Alert trigger
+        # 🔔 ALERT
         if last['rel_vol'] > 2 and last['close'] >= last['high_5d']:
             send_alert(f"🚀 BREAKOUT: {name} @ {last['close']}")
 
     i += 1
 
-# 📋 SCREENER TABLE
+# 📋 SCREENER
 st.subheader("📋 Screener Results")
 
 results = []
@@ -130,19 +129,46 @@ for name, ticker in TICKERS.items():
     df = compute_indicators(df)
     last = df.iloc[-1]
 
+    signal = classify_signal(last)
+
+    # 🧠 IMPROVED FILTER (adaptive)
     if (
-        last['rel_vol'] > 1.5 and
-        1 < last['change_pct'] < 5
+        last['rel_vol'] > 1.2 and last['change_pct'] > 0.5
+    ) or (
+        last['rel_vol'] > 1.5
+    ) or (
+        last['change_pct'] > 2
     ):
         results.append({
             "Stock": name,
             "Price": round(last['close'], 2),
             "RelVol": round(last['rel_vol'], 2),
             "Change%": round(last['change_pct'], 2),
-            "Signal": classify_signal(last)
+            "Signal": signal
         })
 
+# 📊 DISPLAY RESULTS
 if results:
-    st.dataframe(pd.DataFrame(results))
+    df_results = pd.DataFrame(results)
+    df_results = df_results.sort_values(by="RelVol", ascending=False)
+    st.dataframe(df_results)
 else:
-    st.write("No candidates today")
+    st.warning("⚠️ No strong setups — showing full watchlist")
+
+    fallback = []
+
+    for name, ticker in TICKERS.items():
+        df = get_data(ticker)
+
+        if df is None or df.empty:
+            continue
+
+        df = compute_indicators(df)
+        last = df.iloc[-1]
+
+        fallback.append({
+            "Stock": name,
+            "Price": round(last['close'], 2),
+            "RelVol": round(last['rel_vol'], 2),
+            "Change%": round(last['change_pct'], 2),
+            "Signal": classify_signal(last
