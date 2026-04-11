@@ -1,109 +1,47 @@
 import streamlit as st
 import pandas as pd
+import yfinance as yf
 import numpy as np
 import plotly.graph_objects as go
+from streamlit_autorefresh import st_autorefresh
 
-# =========================
-# CONFIG
-# =========================
+st_autorefresh(interval=60000)
 
-st.set_page_config(page_title="Chile Broker Engine v6", layout="wide")
-st.title("🇨🇱 Chile Broker Engine v6 (Institutional + Safe Mode)")
+st.title("🇨🇱 Chile Proxy Institutional Scanner v2")
 
-# =========================
-# TRY BROKER CONNECTION
-# =========================
-
-USE_BROKER = False
-ib = None
-
-try:
-    from ib_insync import IB, Stock, util
-
-    ib = IB()
-    ib.connect('127.0.0.1', 7497, clientId=1)
-    USE_BROKER = True
-    st.success("✅ Broker connected (Interactive Brokers)")
-except:
-    st.warning("⚠️ Broker not connected → running SIMULATION MODE")
-
-# =========================
-# CHILE UNIVERSE
-# =========================
-
+# -----------------------------
+# 🇨🇱 PROXY TICKERS (REAL DATA)
+# -----------------------------
 TICKERS = {
-    "ENEL": "ENEL",
-    "SQM-B": "SQM",
-    "COPEC": "COPEC",
-    "SANTANDER": "BSANTANDER",
-    "CHILE": "BCHILE"
+    "SQM": "SQM",       # lithium giant (Chile exposure)
+    "ENEL CHILE": "ENIC",
+    "SANTANDER CHILE": "BSAC",
+    "LATAM BASKET": "EEM"   # optional emerging markets flow proxy
 }
 
-# =========================
-# DATA ENGINE
-# =========================
-
-def get_broker_data(symbol):
+# -----------------------------
+# 📥 DATA LOADER (STABLE)
+# -----------------------------
+def get_data(ticker):
     try:
-        contract = Stock(symbol, 'SMART', 'USD')
-
-        bars = ib.reqHistoricalData(
-            contract,
-            endDateTime='',
-            durationStr='3 M',
-            barSizeSetting='1 day',
-            whatToShow='TRADES',
-            useRTH=True,
-            formatDate=1
-        )
-
-        df = util.df(bars)
+        df = yf.download(ticker, period="6mo", interval="1d")
 
         if df is None or df.empty:
             return None
 
-        df = df.rename(columns=str.lower)
+        df = df.reset_index()
+        df.columns = [c.lower() for c in df.columns]
+
+        df = df.replace([np.inf, -np.inf], 0).fillna(0)
 
         return df
 
     except:
         return None
 
-
-def get_simulated_data(symbol):
-    """
-    Safe fallback when broker is not available
-    """
-    np.random.seed(hash(symbol) % 10000)
-
-    dates = pd.date_range(end=pd.Timestamp.today(), periods=90)
-
-    price = 100 + np.cumsum(np.random.randn(90))
-
-    df = pd.DataFrame({
-        "date": dates,
-        "open": price,
-        "high": price * (1 + np.random.rand(90) * 0.02),
-        "low": price * (1 - np.random.rand(90) * 0.02),
-        "close": price,
-        "volume": np.random.randint(10000, 100000, 90)
-    })
-
-    return df
-
-
-def get_data(symbol):
-    if USE_BROKER:
-        df = get_broker_data(symbol)
-        if df is not None:
-            return df
-
-    return get_simulated_data(symbol)
-
-# =========================
-# INDICATORS
-# =========================
-
+# -----------------------------
+# 📊 INDICATORS
+# -----------------------------
 def compute_indicators(df):
     df["vol_avg"] = df["volume"].rolling(20).mean()
     df["vol_std"] = df["volume"].rolling(20).std()
@@ -118,10 +56,9 @@ def compute_indicators(df):
 
     return df
 
-# =========================
-# SIGNAL ENGINE
-# =========================
-
+# -----------------------------
+# 🧠 SIGNAL ENGINE
+# -----------------------------
 def signal(last):
     if last["zscore"] > 3:
         return "🚨 INSTITUTIONAL FLOW"
@@ -135,20 +72,19 @@ def signal(last):
         return "📉 WEAKNESS"
     return "➖ NEUTRAL"
 
-# =========================
-# DASHBOARD
-# =========================
-
+# -----------------------------
+# 📊 DASHBOARD
+# -----------------------------
 cols = st.columns(2)
 
 results = []
 
-for i, (name, symbol) in enumerate(TICKERS.items()):
+for i, (name, ticker) in enumerate(TICKERS.items()):
 
-    df = get_data(symbol)
+    df = get_data(ticker)
 
     if df is None or df.empty:
-        st.warning(f"No data: {name}")
+        st.warning(f"⚠️ No data: {name}")
         continue
 
     df = compute_indicators(df)
@@ -172,11 +108,10 @@ for i, (name, symbol) in enumerate(TICKERS.items()):
         "Signal": signal(last)
     })
 
-# =========================
-# SCREENER TABLE
-# =========================
-
-st.subheader("📊 Volume Anomaly Screener")
+# -----------------------------
+# 📋 SCREENER
+# -----------------------------
+st.subheader("📊 Anomaly Screener")
 
 df_res = pd.DataFrame(results)
 
@@ -184,4 +119,4 @@ if not df_res.empty:
     df_res = df_res.sort_values("ZScore", ascending=False)
     st.dataframe(df_res, use_container_width=True)
 else:
-    st.error("No data available (broker or simulation failed)")
+    st.error("No data available")
