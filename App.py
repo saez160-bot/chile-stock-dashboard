@@ -5,18 +5,27 @@ import numpy as np
 import plotly.graph_objects as go
 
 # =========================
-# CONFIG
+# PAGE CONFIG
 # =========================
 
-st.set_page_config(page_title="Chile Trading Terminal v11", layout="wide")
-st.title("🇨🇱 Chile Trading Terminal v11 (CLP + Charts + Signals)")
+st.set_page_config(page_title="Chile Terminal v12", layout="wide")
 
-# 🔑 API KEY (use secrets in production)
+st.markdown(
+    "<h3 style='margin-bottom:5px;'>🇨🇱 Chile Trading Terminal v12</h3>",
+    unsafe_allow_html=True
+)
+
+st.caption("CLP Market Engine • EODHD Data • Volume Anomalies • Charts")
+
+# =========================
+# API KEY
+# =========================
+
 API_KEY = st.secrets.get("EODHD_API_KEY", "69d99e2d2c54f0.76165177")
 BASE_URL = "https://eodhd.com/api/eod"
 
 # =========================
-# 🇨🇱 UNIVERSE
+# UNIVERSE
 # =========================
 
 TICKERS = {
@@ -45,7 +54,6 @@ def get_data(ticker):
             return None
 
         df = pd.DataFrame(data)
-
         df["date"] = pd.to_datetime(df["date"])
         df = df.sort_values("date")
 
@@ -71,9 +79,7 @@ def indicators(df):
 
     df["change_pct"] = df["close"].pct_change() * 100
 
-    df = df.replace([np.inf, -np.inf], 0).fillna(0)
-
-    return df
+    return df.fillna(0)
 
 # =========================
 # SIGNAL ENGINE
@@ -109,83 +115,20 @@ def plot_chart(df, name):
     ))
 
     fig.update_layout(
-        title=f"{name} - CLP Chart",
-        height=550,
-        xaxis_rangeslider_visible=False
+        height=500,
+        xaxis_rangeslider_visible=False,
+        margin=dict(l=10, r=10, t=30, b=10)
     )
 
     return fig
 
 # =========================
-# STOCK SELECTOR
+# SELECTOR
 # =========================
 
-selected = st.selectbox("📊 Select Chile Stock", list(TICKERS.keys()))
+selected = st.selectbox("Select Stock", list(TICKERS.keys()))
 ticker = TICKERS[selected]
 
 df = get_data(ticker)
 
 # =========================
-# MAIN VIEW
-# =========================
-
-if df is None or df.empty:
-    st.error("No CLP data available (check API key or ticker)")
-    st.stop()
-
-df = indicators(df)
-last = df.iloc[-1]
-
-# =========================
-# METRICS
-# =========================
-
-col1, col2, col3, col4 = st.columns(4)
-
-col1.metric("Price (CLP)", round(last["close"], 2))
-col2.metric("Volume", int(last["volume"]))
-col3.metric("Rel Vol", round(last["rel_vol"], 2))
-col4.metric("Z-Score", round(last["zscore"], 2))
-
-st.subheader("🧠 Signal")
-st.write(signal(last))
-
-# =========================
-# CHART
-# =========================
-
-st.subheader("📈 Price Chart")
-
-st.plotly_chart(plot_chart(df, selected), use_container_width=True)
-
-# =========================
-# SCREENER (ALL STOCKS)
-# =========================
-
-st.subheader("📊 Chile Screener")
-
-results = []
-
-for name, ticker in TICKERS.items():
-
-    df_temp = get_data(ticker)
-
-    if df_temp is None or df_temp.empty:
-        continue
-
-    df_temp = indicators(df_temp)
-    last_temp = df_temp.iloc[-1]
-
-    results.append({
-        "Stock": name,
-        "Price": round(last_temp["close"], 2),
-        "RelVol": round(last_temp["rel_vol"], 2),
-        "ZScore": round(last_temp["zscore"], 2),
-        "Signal": signal(last_temp)
-    })
-
-if results:
-    df_res = pd.DataFrame(results).sort_values("ZScore", ascending=False)
-    st.dataframe(df_res, use_container_width=True)
-else:
-    st.warning("No screener data available")
