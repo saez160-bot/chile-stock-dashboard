@@ -102,4 +102,119 @@ def signal(last):
         return "🔥 ACCUMULATION"
     elif last["rel_vol"] > 1.5:
         return "⚡ VOLUME SPIKE"
-    elif last["change
+    elif last["change_pct"] > 1:
+        return "📈 MOMENTUM"
+    elif last["change_pct"] < -1:
+        return "📉 DISTRIBUTION"
+    return "➖ NEUTRAL"
+
+# =========================
+# CHART
+# =========================
+
+def plot_chart(df, name):
+    fig = go.Figure()
+
+    fig.add_trace(go.Candlestick(
+        x=df["date"],
+        open=df["open"],
+        high=df["high"],
+        low=df["low"],
+        close=df["close"]
+    ))
+
+    fig.update_layout(
+        height=520,
+        margin=dict(l=10, r=10, t=30, b=10),
+        xaxis_rangeslider_visible=False,
+        title=name
+    )
+
+    return fig
+
+# =========================
+# SELECTOR
+# =========================
+
+selected = st.selectbox("Select Stock", list(TICKERS.keys()))
+ticker = TICKERS[selected]
+
+df = get_data(ticker)
+
+# =========================
+# SAFE FALLBACK (NO BREAKS)
+# =========================
+
+if df is None or df.empty:
+    st.error("No data received from API (check key or ticker access)")
+    st.stop()
+
+df = indicators(df)
+last = df.iloc[-1]
+
+# =========================
+# METRICS (COMPACT)
+# =========================
+
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    st.metric("Price", round(last["close"], 2))
+
+with col2:
+    st.metric("Volume", f"{int(last['volume'])/1000:.1f}K")
+
+with col3:
+    st.metric("Rel Vol", round(last["rel_vol"], 2))
+
+with col4:
+    st.metric("Z", round(last["zscore"], 2))
+
+st.markdown(
+    f"<div style='font-size:13px;'>🧠 Signal: <b>{signal(last)}</b></div>",
+    unsafe_allow_html=True
+)
+
+# =========================
+# CHART
+# =========================
+
+st.plotly_chart(
+    plot_chart(df, selected),
+    use_container_width=True,
+    config={"displayModeBar": False}
+)
+
+# =========================
+# SCREENER
+# =========================
+
+st.subheader("📊 Screener")
+
+results = []
+
+for name, ticker in TICKERS.items():
+
+    df_temp = get_data(ticker)
+
+    if df_temp is None or df_temp.empty:
+        continue
+
+    df_temp = indicators(df_temp)
+    last_temp = df_temp.iloc[-1]
+
+    results.append({
+        "Stock": name,
+        "Price": round(last_temp["close"], 2),
+        "RelVol": round(last_temp["rel_vol"], 2),
+        "ZScore": round(last_temp["zscore"], 2),
+        "Signal": signal(last_temp)
+    })
+
+if results:
+    st.dataframe(
+        pd.DataFrame(results).sort_values("ZScore", ascending=False),
+        use_container_width=True
+    )
+else:
+    st.warning("No screener data available")
