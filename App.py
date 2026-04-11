@@ -2,20 +2,21 @@ import streamlit as st
 import pandas as pd
 import requests
 import numpy as np
-
-st.set_page_config(page_title="Chile CLP Engine v10", layout="wide")
-st.title("🇨🇱 Chile CLP Engine v10 (EODHD Live)")
+import plotly.graph_objects as go
 
 # =========================
-# 🔑 API KEY (DO NOT HARD-CODE PUBLICLY)
+# CONFIG
 # =========================
 
+st.set_page_config(page_title="Chile Trading Terminal v11", layout="wide")
+st.title("🇨🇱 Chile Trading Terminal v11 (CLP + Charts + Signals)")
+
+# 🔑 API KEY (use secrets in production)
 API_KEY = st.secrets.get("EODHD_API_KEY", "69d99e2d2c54f0.76165177")
-
 BASE_URL = "https://eodhd.com/api/eod"
 
 # =========================
-# 🇨🇱 CHILE TICKERS
+# 🇨🇱 UNIVERSE
 # =========================
 
 TICKERS = {
@@ -27,7 +28,7 @@ TICKERS = {
 }
 
 # =========================
-# 📡 DATA FETCH
+# DATA ENGINE
 # =========================
 
 def get_data(ticker):
@@ -54,7 +55,7 @@ def get_data(ticker):
         return None
 
 # =========================
-# 📊 INDICATORS
+# INDICATORS
 # =========================
 
 def indicators(df):
@@ -70,10 +71,12 @@ def indicators(df):
 
     df["change_pct"] = df["close"].pct_change() * 100
 
-    return df.fillna(0)
+    df = df.replace([np.inf, -np.inf], 0).fillna(0)
+
+    return df
 
 # =========================
-# 🧠 SIGNAL ENGINE
+# SIGNAL ENGINE
 # =========================
 
 def signal(last):
@@ -90,42 +93,99 @@ def signal(last):
     return "➖ NEUTRAL"
 
 # =========================
-# 📊 DASHBOARD
+# CHART ENGINE
 # =========================
+
+def plot_chart(df, name):
+    fig = go.Figure()
+
+    fig.add_trace(go.Candlestick(
+        x=df["date"],
+        open=df["open"],
+        high=df["high"],
+        low=df["low"],
+        close=df["close"],
+        name=name
+    ))
+
+    fig.update_layout(
+        title=f"{name} - CLP Chart",
+        height=550,
+        xaxis_rangeslider_visible=False
+    )
+
+    return fig
+
+# =========================
+# STOCK SELECTOR
+# =========================
+
+selected = st.selectbox("📊 Select Chile Stock", list(TICKERS.keys()))
+ticker = TICKERS[selected]
+
+df = get_data(ticker)
+
+# =========================
+# MAIN VIEW
+# =========================
+
+if df is None or df.empty:
+    st.error("No CLP data available (check API key or ticker)")
+    st.stop()
+
+df = indicators(df)
+last = df.iloc[-1]
+
+# =========================
+# METRICS
+# =========================
+
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric("Price (CLP)", round(last["close"], 2))
+col2.metric("Volume", int(last["volume"]))
+col3.metric("Rel Vol", round(last["rel_vol"], 2))
+col4.metric("Z-Score", round(last["zscore"], 2))
+
+st.subheader("🧠 Signal")
+st.write(signal(last))
+
+# =========================
+# CHART
+# =========================
+
+st.subheader("📈 Price Chart")
+
+st.plotly_chart(plot_chart(df, selected), use_container_width=True)
+
+# =========================
+# SCREENER (ALL STOCKS)
+# =========================
+
+st.subheader("📊 Chile Screener")
 
 results = []
 
 for name, ticker in TICKERS.items():
 
-    df = get_data(ticker)
+    df_temp = get_data(ticker)
 
-    if df is None or df.empty:
-        st.warning(f"No data: {name}")
+    if df_temp is None or df_temp.empty:
         continue
 
-    df = indicators(df)
-    last = df.iloc[-1]
-
-    st.markdown(f"## {name} (CLP)")
-
-    st.metric("Price", round(last["close"], 2))
-    st.metric("Volume", int(last["volume"]))
-    st.metric("Rel Vol", round(last["rel_vol"], 2))
-    st.metric("Z-Score", round(last["zscore"], 2))
-
-    st.write("Signal:", signal(last))
+    df_temp = indicators(df_temp)
+    last_temp = df_temp.iloc[-1]
 
     results.append({
         "Stock": name,
-        "Price": round(last["close"], 2),
-        "RelVol": round(last["rel_vol"], 2),
-        "ZScore": round(last["zscore"], 2),
-        "Signal": signal(last)
+        "Price": round(last_temp["close"], 2),
+        "RelVol": round(last_temp["rel_vol"], 2),
+        "ZScore": round(last_temp["zscore"], 2),
+        "Signal": signal(last_temp)
     })
 
-st.subheader("📊 Chile CLP Screener")
-
 if results:
-    st.dataframe(pd.DataFrame(results))
+    df_res = pd.DataFrame(results).sort_values("ZScore", ascending=False)
+    st.dataframe(df_res, use_container_width=True)
 else:
-    st.error("No data received (check API key or ticker access)")
+    st.warning("No screener data available")
