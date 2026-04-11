@@ -5,17 +5,17 @@ import numpy as np
 import plotly.graph_objects as go
 
 # =========================
-# PAGE
+# PAGE CONFIG
 # =========================
 
-st.set_page_config(page_title="Chile Terminal v13", layout="wide")
+st.set_page_config(page_title="Chile Terminal v14", layout="wide")
 
 st.markdown(
-    "<h3 style='margin-bottom:5px;'>🇨🇱 Chile Trading Terminal v13 (Stable Pro)</h3>",
+    "<h3 style='margin-bottom:5px;'>🇨🇱 Chile Trading Terminal v14</h3>",
     unsafe_allow_html=True
 )
 
-st.caption("Stable engine • EODHD data • Safe fallback handling • Charts + Screener")
+st.caption("CLP Engine • EODHD Data • Volume Anomalies • MA Trend System")
 
 # =========================
 # API
@@ -37,7 +37,7 @@ TICKERS = {
 }
 
 # =========================
-# SAFE DATA ENGINE (ROBUST)
+# DATA ENGINE (STABLE)
 # =========================
 
 def get_data(ticker):
@@ -56,16 +56,13 @@ def get_data(ticker):
         df = pd.DataFrame(data)
 
         required = ["date", "open", "high", "low", "close", "volume"]
-        for col in required:
-            if col not in df.columns:
-                return None
+        if not all(col in df.columns for col in required):
+            return None
 
         df["date"] = pd.to_datetime(df["date"])
         df = df.sort_values("date")
 
-        df = df.dropna()
-
-        return df
+        return df.dropna()
 
     except:
         return None
@@ -79,17 +76,19 @@ def indicators(df):
 
     df["volume"] = df["volume"].fillna(0)
 
-    df["vol_avg"] = df["volume"].rolling(20, min_periods=5).mean()
-    df["vol_std"] = df["volume"].rolling(20, min_periods=5).std()
+    df["vol_avg"] = df["volume"].rolling(20).mean()
+    df["vol_std"] = df["volume"].rolling(20).std()
 
     df["rel_vol"] = df["volume"] / (df["vol_avg"] + 1e-9)
     df["zscore"] = (df["volume"] - df["vol_avg"]) / (df["vol_std"] + 1e-9)
 
     df["change_pct"] = df["close"].pct_change() * 100
 
-    df = df.replace([np.inf, -np.inf], 0).fillna(0)
+    # MOVING AVERAGES
+    df["ma20"] = df["close"].rolling(20).mean()
+    df["ma50"] = df["close"].rolling(50).mean()
 
-    return df
+    return df.fillna(0)
 
 # =========================
 # SIGNAL ENGINE
@@ -109,25 +108,49 @@ def signal(last):
     return "➖ NEUTRAL"
 
 # =========================
-# CHART
+# CHART ENGINE (PRO)
 # =========================
 
 def plot_chart(df, name):
     fig = go.Figure()
 
+    # Candles
     fig.add_trace(go.Candlestick(
         x=df["date"],
         open=df["open"],
         high=df["high"],
         low=df["low"],
-        close=df["close"]
+        close=df["close"],
+        name="Price"
+    ))
+
+    # MA20
+    fig.add_trace(go.Scatter(
+        x=df["date"],
+        y=df["ma20"],
+        mode="lines",
+        name="MA20"
+    ))
+
+    # MA50
+    fig.add_trace(go.Scatter(
+        x=df["date"],
+        y=df["ma50"],
+        mode="lines",
+        name="MA50"
     ))
 
     fig.update_layout(
-        height=520,
-        margin=dict(l=10, r=10, t=30, b=10),
-        xaxis_rangeslider_visible=False,
-        title=name
+        title=name,
+        height=600,
+        margin=dict(l=10, r=10, t=40, b=10),
+        xaxis=dict(
+            rangeslider=dict(visible=True),
+            showspikes=True
+        ),
+        yaxis=dict(fixedrange=False),
+        hovermode="x unified",
+        template="plotly_dark"
     )
 
     return fig
@@ -141,19 +164,15 @@ ticker = TICKERS[selected]
 
 df = get_data(ticker)
 
-# =========================
-# SAFE FALLBACK (NO BREAKS)
-# =========================
-
 if df is None or df.empty:
-    st.error("No data received from API (check key or ticker access)")
+    st.error("No data available (check API key or ticker)")
     st.stop()
 
 df = indicators(df)
 last = df.iloc[-1]
 
 # =========================
-# METRICS (COMPACT)
+# COMPACT METRICS (FIXED UI)
 # =========================
 
 col1, col2, col3, col4 = st.columns(4)
@@ -162,7 +181,7 @@ with col1:
     st.metric("Price", round(last["close"], 2))
 
 with col2:
-    st.metric("Volume", f"{int(last['volume'])/1000:.1f}K")
+    st.metric("Vol (K)", f"{last['volume']/1000:.1f}")
 
 with col3:
     st.metric("Rel Vol", round(last["rel_vol"], 2))
@@ -170,8 +189,12 @@ with col3:
 with col4:
     st.metric("Z", round(last["zscore"], 2))
 
+# =========================
+# SIGNAL (SMALL FONT)
+# =========================
+
 st.markdown(
-    f"<div style='font-size:13px;'>🧠 Signal: <b>{signal(last)}</b></div>",
+    f"<div style='font-size:12px; opacity:0.85;'>🧠 Signal: <b>{signal(last)}</b></div>",
     unsafe_allow_html=True
 )
 
@@ -182,14 +205,17 @@ st.markdown(
 st.plotly_chart(
     plot_chart(df, selected),
     use_container_width=True,
-    config={"displayModeBar": False}
+    config={
+        "displayModeBar": True,
+        "scrollZoom": True
+    }
 )
 
 # =========================
 # SCREENER
 # =========================
 
-st.subheader("📊 Screener")
+st.subheader("📊 Chile Screener")
 
 results = []
 
